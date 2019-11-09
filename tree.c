@@ -3,14 +3,8 @@
 #include <string.h>
 #include "tree.h"
 
-/* function to provide the tree to compare data in nodes */
-typedef int (*compare_cb) (node_t *n1, node_t *n2);
-typedef void (*traverse_cb) (node_t *node);
-typedef void (*free_cb) (void* data);
-
 void tree_init(tree_t *tree)
 {
-    printf("in tree_init\n");
     tree->head = NULL;
 }
 
@@ -47,37 +41,69 @@ void tree_free_node(tree_t *tree, node_t **node)
     free((*node));
 }
 
-void set_compare_cb(tree_t *tree, compare_cb cb)
+void tree_set_compare_cb(tree_t *tree, compare_cb cb)
 {
     tree->compare = cb;
 }
 
-void set_traverse_cb(tree_t *tree, traverse_cb cb)
+void tree_set_traverse_cb(tree_t *tree, traverse_cb cb)
 {
     tree->traverse = cb;
 }
 
-void set_free_cb(tree_t *tree, free_cb cb)
+void tree_set_free_cb(tree_t *tree, free_cb cb)
 {
     tree->free = cb;
+}
+
+
+static void _tree_traverse_and_execute_from_node(tree_t *tree,
+                                                 node_t *node)
+{
+    if (node == NULL)
+    {
+        return;
+    }
+    else
+    {
+        tree->traverse(node);
+        _tree_traverse_and_execute_from_node(tree, node->left);
+        _tree_traverse_and_execute_from_node(tree, node->right);
+    }
+}
+        
+
+int tree_traverse_and_execute(tree_t *tree)
+{
+    if (!tree)
+    {
+        printf("Tree is NULL\n");
+        return -1;
+    }
+    if (tree->head == NULL)
+    {
+        printf("Tree head is NULL\n");
+        return -1;
+    }
+    _tree_traverse_and_execute_from_node(tree, tree->head);
+    return 0;
 }
 
 /* Insert new_node into tree */
 static int _tree_insert_from_node(tree_t *tree, node_t **tree_node, node_t *new_node)
 {
-    printf("in _tree_insert\n");
     int cmp;
     if (*tree_node == NULL)
     {
         *tree_node = new_node;
-	return 0;
+	    return 0;
     }
     cmp = tree->compare(*tree_node, new_node);
     if (cmp < 0)
     {
         _tree_insert_from_node(tree, &((*tree_node)->right), new_node);
     }
-    else if (cmp >0)
+    else if (cmp >= 0)
     {
         _tree_insert_from_node(tree, &((*tree_node)->left), new_node);
     }
@@ -87,7 +113,6 @@ static int _tree_insert_from_node(tree_t *tree, node_t **tree_node, node_t *new_
 /* Add node to tree*/
 int tree_insert_node(tree_t *tree, node_t *new_node)
 {
-    printf("in tree_insert\n");
     if (!tree)
     {
         printf("Tree pointer NULL\n");
@@ -102,38 +127,132 @@ int tree_insert_node(tree_t *tree, node_t *new_node)
     return 0;
 }
 
-static void _tree_traverse_and_execute_from_node(node_t *node,
-                                                 traverse_cb do_stuff)
+
+static void traverse_and_add_nodes_to_subtree(tree_t *tree, node_t *node)
 {
-    printf("in _tree_traverse\n");
-    if (node == NULL)
+    if (!node->right && !node->left)
     {
         return;
     }
-    else
+    if (node->right)
     {
-        do_stuff(node);
-        _tree_traverse_and_execute_from_node(node->left, do_stuff);
-        _tree_traverse_and_execute_from_node(node->right, do_stuff);
+        if (tree->head == NULL)
+        {
+            tree->head = node->right;
+        }
+        else
+        {
+            tree_insert_node(tree, node->right);
+            traverse_and_add_nodes_to_subtree(tree, node->right);
+        }
+    }
+    if (node->left)
+    {
+        if (tree->head == NULL)
+        {
+            tree->head = node->left;
+        }
+        else
+        {
+            tree_insert_node(tree, node->left);
+            traverse_and_add_nodes_to_subtree(tree, node->left);
+        }
     }
 }
-        
 
-int tree_traverse_and_execute(tree_t *tree)
+/*create a subtree using the specified child of node */
+static tree_t *tree_create_subtree(tree_t *orig_tree, node_t *node)
 {
-    printf("in tree traverse\n");
+    tree_t *tree = malloc(sizeof(tree_t));
     if (!tree)
     {
-        printf("Tree is NULL\n");
-        return -1;
+        printf("could not malloc new tree\n");
+        return NULL;
     }
-    if (tree->head == NULL)
-    {
-        printf("Tree head is NULL\n");
-        return -1;
-    }
-    _tree_traverse_and_execute_from_node(tree->head, tree->traverse);
-    return 0;
+    tree_init(tree);
+    tree->compare = orig_tree->compare;
+    tree->traverse = orig_tree->traverse;
+    tree->free = orig_tree->free;
+    tree->head = NULL;
+
+    traverse_and_add_nodes_to_subtree(tree, node);
+    return tree;
 }
 
+static node_t *tree_search_for_parent_from_node(tree_t *tree,
+                                                node_t **tree_node,
+                                                node_t *node)
+{
+    int cmp;
+    if ((*tree_node)->right == node ||
+        (*tree_node)->left == node)
+    {   
+	    return *tree_node;
+    }
+    cmp = tree->compare(*tree_node, node);
+    if (cmp < 0)
+    {
+        return tree_search_for_parent_from_node(tree, &((*tree_node)->right), node);
+    }
+    else if (cmp > 0)
+    {
+        return tree_search_for_parent_from_node(tree, &((*tree_node)->left), node);
+    }
+    // head node has no parent
+    return NULL;
+}
 
+static node_t *tree_get_node_parent(tree_t *tree, node_t *node)
+{
+    node_t *parent;
+    if (!tree)
+    {
+        printf("get parent Tree pointer NULL\n");
+        return NULL;
+    }
+    if (!node)
+    {
+        printf("get parent: No node given\n");
+        return NULL;
+    }
+    parent = tree_search_for_parent_from_node(tree, &tree->head, node);
+    return parent;
+}
+
+/* Remove node from tree */
+int tree_remove_node(tree_t *tree, node_t *node)
+{
+    tree_t *tmp_tree;
+    node_t *parent_node;
+    if(!tree)
+    {
+        printf("Tree pointer NULL\n");
+        return -1;
+    }
+    if (!node)
+    {
+        printf("No node given to remove\n");
+        return -1;
+    }
+    parent_node = tree_get_node_parent(tree, node);
+    tmp_tree = tree_create_subtree(tree, node);
+    if (parent_node == NULL)
+    {
+        tree->head = tmp_tree->head;
+    }
+    else if (parent_node->right == node)
+    {
+        parent_node->right = tmp_tree->head;
+    }
+    else if (parent_node->left == node)
+    {
+        parent_node->left = tmp_tree->head;
+    }
+    else
+    {
+        printf("Shouldn't get here :)\n");
+    }
+    tree_free_node(tree, &node);
+    free(tmp_tree);
+    return 0;
+}

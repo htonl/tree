@@ -15,7 +15,7 @@ OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 
 $(ODIR)/%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -g -o $@ $< $(CFLAGS)
 
 tree_driver: $(OBJ)
 	$(CC) -g -o $@ $^ $(CFLAGS) $(LIBS)
